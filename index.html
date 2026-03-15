@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Curvature Visualiser</title>
+<script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+<style>
+:root {
+  --bg: #0f0f13;
+  --surface: #1a1a24;
+  --border: #2a2a3a;
+  --text: #e0e0e8;
+  --muted: #8888a0;
+  --accent: #6c8cff;
+  --accent2: #ff6c8c;
+  --accent3: #6cffc8;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  line-height: 1.5;
+}
+header {
+  text-align: center;
+  padding: 2rem 1rem 1rem;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #16162080, transparent);
+}
+header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--accent), var(--accent2), var(--accent3));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: .25rem;
+}
+header p { color: var(--muted); font-size: .9rem; }
+
+.container { max-width: 1400px; margin: 0 auto; padding: 1.25rem; }
+
+/* Preset buttons */
+.presets {
+  display: flex; flex-wrap: wrap; gap: .5rem;
+  justify-content: center; margin-bottom: 1.25rem;
+}
+.presets button {
+  background: var(--surface);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: .35rem 1rem;
+  font-size: .82rem;
+  cursor: pointer;
+  transition: all .2s;
+  font-family: inherit;
+}
+.presets button:hover { border-color: var(--accent); color: var(--text); }
+.presets button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Layout */
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.25rem;
+}
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.card-title {
+  padding: .6rem 1rem;
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Sidebar */
+.sidebar { display: flex; flex-direction: column; gap: 1.25rem; }
+.info-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: .5rem;
+  padding: 1rem;
+}
+.info-item {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: .6rem .75rem;
+}
+.info-item .label { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.info-item .value { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+
+.controls { padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+.control-row { display: flex; align-items: center; gap: .75rem; }
+.control-row label { font-size: .8rem; color: var(--muted); min-width: 70px; }
+.control-row input[type=range] { flex: 1; accent-color: var(--accent); }
+.control-row .val { font-size: .82rem; color: var(--text); min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.play-row { display: flex; gap: .5rem; align-items: center; }
+.play-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: .45rem 1.2rem;
+  font-size: .85rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  transition: opacity .2s;
+}
+.play-btn:hover { opacity: .85; }
+.speed-select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: .35rem .5rem;
+  font-size: .8rem;
+  font-family: inherit;
+}
+
+/* Plots */
+.plot-wrap { width: 100%; }
+.bottom-plots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-top: 1.25rem;
+}
+@media (max-width: 700px) {
+  .bottom-plots { grid-template-columns: 1fr; }
+}
+
+.legend-row {
+  display: flex; flex-wrap: wrap; gap: .75rem;
+  padding: .5rem 1rem;
+  font-size: .75rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+.legend-item { display: flex; align-items: center; gap: .3rem; }
+.legend-swatch {
+  width: 14px; height: 3px; border-radius: 2px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Curvature Visualiser</h1>
+  <p>Osculating circles, curvature plots, and evolutes for parametric curves</p>
+</header>
+
+<div class="container">
+  <div class="presets" id="presetBar"></div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <div class="card-title">Curve &amp; Osculating Circle</div>
+        <div id="mainPlot" class="plot-wrap" style="height:520px;"></div>
+        <div class="legend-row">
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--accent)"></span> Curve</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--accent2);border:1px dashed var(--accent2);height:1px"></span> Osculating circle</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--accent3);border:1px dashed var(--accent3);height:1px"></span> Evolute</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:#ffd36c"></span> Normal</span>
+        </div>
+      </div>
+
+      <div class="bottom-plots">
+        <div class="card">
+          <div class="card-title">Curvature &kappa;(t)</div>
+          <div id="kappaPlot" class="plot-wrap" style="height:250px;"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Radius of Curvature R(t)</div>
+          <div id="radiusPlot" class="plot-wrap" style="height:250px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="card">
+        <div class="card-title">Information</div>
+        <div class="info-grid">
+          <div class="info-item"><div class="label">x</div><div class="value" id="infoX">0</div></div>
+          <div class="info-item"><div class="label">y</div><div class="value" id="infoY">0</div></div>
+          <div class="info-item"><div class="label">Curvature &kappa;</div><div class="value" id="infoK">0</div></div>
+          <div class="info-item"><div class="label">Radius R</div><div class="value" id="infoR">0</div></div>
+          <div class="info-item"><div class="label">Tangent angle</div><div class="value" id="infoAngle">0&deg;</div></div>
+          <div class="info-item"><div class="label">Parameter t</div><div class="value" id="infoT">0</div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Controls</div>
+        <div class="controls">
+          <div class="control-row">
+            <label>t</label>
+            <input type="range" id="tSlider" min="0" max="1000" value="0">
+            <span class="val" id="tVal">0.00</span>
+          </div>
+          <div class="play-row">
+            <button class="play-btn" id="playBtn">Play</button>
+            <select class="speed-select" id="speedSel">
+              <option value="0.25">0.25x</option>
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1x</option>
+              <option value="2">2x</option>
+              <option value="4">4x</option>
+            </select>
+          </div>
+          <div id="paramControls"></div>
+        </div>
+      </div>
+
+      <div class="card" id="formulaCard">
+        <div class="card-title">Parametric Equations</div>
+        <div style="padding:1rem;font-size:.85rem;color:var(--muted);line-height:1.7" id="formulaText"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Curve Definitions ──
+const CURVES = {
+  circle: {
+    name: 'Circle',
+    params: {},
+    tRange: [0, 2*Math.PI],
+    formula: 'x = cos t, y = sin t',
+    fn: (t, p) => [Math.cos(t), Math.sin(t)],
+    dx: (t, p) => [-Math.sin(t), Math.cos(t)],
+    ddx: (t, p) => [-Math.cos(t), -Math.sin(t)],
+  },
+  ellipse: {
+    name: 'Ellipse',
+    params: { a: { min: 0.5, max: 5, step: 0.1, default: 2, label: 'a' },
+              b: { min: 0.5, max: 5, step: 0.1, default: 1, label: 'b' }},
+    tRange: [0, 2*Math.PI],
+    formula: 'x = a cos t, y = b sin t',
+    fn: (t, p) => [p.a*Math.cos(t), p.b*Math.sin(t)],
+    dx: (t, p) => [-p.a*Math.sin(t), p.b*Math.cos(t)],
+    ddx: (t, p) => [-p.a*Math.cos(t), -p.b*Math.sin(t)],
+  },
+  lissajous: {
+    name: 'Lissajous',
+    params: { a: { min: 1, max: 7, step: 1, default: 3, label: 'a' },
+              b: { min: 1, max: 7, step: 1, default: 2, label: 'b' },
+              delta: { min: 0, max: 3.14, step: 0.05, default: 1.57, label: '\u03b4' }},
+    tRange: [0, 2*Math.PI],
+    formula: 'x = sin(a t + \u03b4), y = sin(b t)',
+    fn: (t, p) => [Math.sin(p.a*t + p.delta), Math.sin(p.b*t)],
+    dx: (t, p) => [p.a*Math.cos(p.a*t + p.delta), p.b*Math.cos(p.b*t)],
+    ddx: (t, p) => [-p.a*p.a*Math.sin(p.a*t + p.delta), -p.b*p.b*Math.sin(p.b*t)],
+  },
+  cardioid: {
+    name: 'Cardioid',
+    params: { a: { min: 0.5, max: 3, step: 0.1, default: 1, label: 'a' }},
+    tRange: [0, 2*Math.PI],
+    formula: 'r = a(1 + cos t)',
+    fn: (t, p) => { const r = p.a*(1+Math.cos(t)); return [r*Math.cos(t), r*Math.sin(t)]; },
+    dx: (t, p) => {
+      const a = p.a, c = Math.cos(t), s = Math.sin(t);
+      const dr = -a*s;
+      return [dr*c - (a*(1+c))*s, dr*s + (a*(1+c))*c];
+    },
+    ddx: (t, p) => {
+      const a = p.a, c = Math.cos(t), s = Math.sin(t);
+      const r = a*(1+c), dr = -a*s, ddr = -a*c;
+      return [ddr*c - 2*dr*s - r*c, ddr*s + 2*dr*c - r*s];
+    },
+  },
+  limacon: {
+    name: 'Lima\u00e7on',
+    params: { a: { min: 0.5, max: 3, step: 0.1, default: 1, label: 'a' },
+              b: { min: 0.1, max: 3, step: 0.1, default: 0.5, label: 'b' }},
+    tRange: [0, 2*Math.PI],
+    formula: 'r = a + b cos t',
+    fn: (t, p) => { const r = p.a + p.b*Math.cos(t); return [r*Math.cos(t), r*Math.sin(t)]; },
+    dx: (t, p) => {
+      const a = p.a, b = p.b, c = Math.cos(t), s = Math.sin(t);
+      const r = a + b*c, dr = -b*s;
+      return [dr*c - r*s, dr*s + r*c];
+    },
+    ddx: (t, p) => {
+      const a = p.a, b = p.b, c = Math.cos(t), s = Math.sin(t);
+      const r = a + b*c, dr = -b*s, ddr = -b*c;
+      return [ddr*c - 2*dr*s - r*c, ddr*s + 2*dr*c - r*s];
+    },
+  },
+  astroid: {
+    name: 'Astroid',
+    params: { a: { min: 0.5, max: 3, step: 0.1, default: 1, label: 'a' }},
+    tRange: [0, 2*Math.PI],
+    formula: 'x = a cos\u00b3t, y = a sin\u00b3t',
+    fn: (t, p) => [p.a*Math.pow(Math.cos(t),3), p.a*Math.pow(Math.sin(t),3)],
+    dx: (t, p) => [-3*p.a*Math.pow(Math.cos(t),2)*Math.sin(t), 3*p.a*Math.pow(Math.sin(t),2)*Math.cos(t)],
+    ddx: (t, p) => {
+      const a = p.a, c = Math.cos(t), s = Math.sin(t);
+      return [3*a*(2*c*s*s - c*c*c +c*s*s), 3*a*(2*s*(-s)*(-s) +s*s*(-s) - s*c*c +s*s*(-s))];
+    },
+  },
+  epicycloid: {
+    name: 'Epicycloid',
+    params: { R: { min: 1, max: 5, step: 0.5, default: 3, label: 'R' },
+              r: { min: 0.5, max: 3, step: 0.25, default: 1, label: 'r' }},
+    tRange: [0, 2*Math.PI],
+    formula: 'x = (R+r)cos t - r cos((R+r)t/r)',
+    fn: (t, p) => {
+      const Rr = p.R + p.r, ratio = Rr / p.r;
+      return [Rr*Math.cos(t) - p.r*Math.cos(ratio*t), Rr*Math.sin(t) - p.r*Math.sin(ratio*t)];
+    },
+    dx: (t, p) => {
+      const Rr = p.R + p.r, ratio = Rr / p.r;
+      return [-Rr*Math.sin(t) + Rr*Math.sin(ratio*t), Rr*Math.cos(t) - Rr*Math.cos(ratio*t)];
+    },
+    ddx: (t, p) => {
+      const Rr = p.R + p.r, ratio = Rr / p.r;
+      return [-Rr*Math.cos(t) + Rr*ratio*Math.cos(ratio*t), -Rr*Math.sin(t) + Rr*ratio*Math.sin(ratio*t)];
+    },
+  },
+  lemniscate: {
+    name: 'Lemniscate',
+    params: { a: { min: 0.5, max: 3, step: 0.1, default: 1.5, label: 'a' }},
+    tRange: [0, 2*Math.PI],
+    formula: 'r\u00b2 = a\u00b2 cos 2t',
+    fn: (t, p) => {
+      const c2 = Math.cos(2*t);
+      if (c2 < 0) return [NaN, NaN];
+      const r = p.a * Math.sqrt(c2);
+      return [r*Math.cos(t), r*Math.sin(t)];
+    },
+    dx: null, ddx: null, // use finite differences
+  },
+  archimedean: {
+    name: 'Archimedean Spiral',
+    params: { a: { min: 0.05, max: 0.5, step: 0.01, default: 0.15, label: 'a' }},
+    tRange: [0, 6*Math.PI],
+    formula: 'r = a t',
+    fn: (t, p) => { const r = p.a*t; return [r*Math.cos(t), r*Math.sin(t)]; },
+    dx: (t, p) => {
+      const a = p.a, c = Math.cos(t), s = Math.sin(t);
+      return [a*c - a*t*s, a*s + a*t*c];
+    },
+    ddx: (t, p) => {
+      const a = p.a, c = Math.cos(t), s = Math.sin(t);
+      return [-2*a*s - a*t*c, 2*a*c - a*t*s];
+    },
+  },
+  logspiral: {
+    name: 'Log Spiral',
+    params: { a: { min: 0.05, max: 0.5, step: 0.01, default: 0.1, label: 'a' },
+              k: { min: 0.05, max: 0.3, step: 0.01, default: 0.1, label: 'k' }},
+    tRange: [0, 6*Math.PI],
+    formula: 'r = a e^(kt)',
+    fn: (t, p) => { const r = p.a*Math.exp(p.k*t); return [r*Math.cos(t), r*Math.sin(t)]; },
+    dx: (t, p) => {
+      const a = p.a, k = p.k, ekt = Math.exp(k*t), c = Math.cos(t), s = Math.sin(t);
+      return [a*ekt*(k*c - s), a*ekt*(k*s + c)];
+    },
+    ddx: (t, p) => {
+      const a = p.a, k = p.k, ekt = Math.exp(k*t), c = Math.cos(t), s = Math.sin(t);
+      return [a*ekt*((k*k-1)*c - 2*k*s), a*ekt*((k*k-1)*s + 2*k*c)];
+    },
+  },
+  clothoid: {
+    name: 'Clothoid',
+    params: { a: { min: 0.5, max: 3, step: 0.1, default: 1.5, label: 'a' }},
+    tRange: [-5, 5],
+    formula: 'x = a \u222B cos(u\u00b2/2)du, y = a \u222B sin(u\u00b2/2)du',
+    fn: null, dx: null, ddx: null, // Fresnel integrals via numeric
+    _fresnel: true,
+  },
+  catenary: {
+    name: 'Catenary',
+    params: { a: { min: 0.5, max: 3, step: 0.1, default: 1, label: 'a' }},
+    tRange: [-3, 3],
+    formula: 'x = t, y = a cosh(t/a)',
+    fn: (t, p) => [t, p.a*Math.cosh(t/p.a)],
+    dx: (t, p) => [1, Math.sinh(t/p.a)],
+    ddx: (t, p) => [0, Math.cosh(t/p.a)/p.a],
+  },
+};
+
+// Correct the astroid ddx analytically:
+// x = a cos^3 t => x' = -3a cos^2 t sin t
+// x'' = -3a(-2 cos t sin^2 t + cos^2 t (-cos t) )... let me redo:
+// x' = -3a cos^2 t sin t
+// x'' = -3a [ -2 cos t sin t * sin t + cos^2 t * cos t ] ... wait:
+// d/dt[ cos^2 t sin t ] = 2 cos t (-sin t) sin t + cos^2 t cos t = -2 cos t sin^2 t + cos^3 t
+// So x'' = -3a(-2 cos t sin^2 t + cos^3 t) = 3a(2 cos t sin^2 t - cos^3 t)
+// y' = 3a sin^2 t cos t
+// d/dt[sin^2 t cos t] = 2 sin t cos t cos t + sin^2 t (-sin t) = 2 sin t cos^2 t - sin^3 t
+// y'' = 3a(2 sin t cos^2 t - sin^3 t)
+CURVES.astroid.ddx = (t, p) => {
+  const a = p.a, c = Math.cos(t), s = Math.sin(t);
+  return [3*a*(2*c*s*s - c*c*c), 3*a*(2*s*c*c - s*s*s)];
+};
+
+// Clothoid: numerical Fresnel integrals
+function fresnelPoint(t, a) {
+  // Simpson's rule integration
+  const N = 200;
+  const h = t / N;
+  let sx = 0, sy = 0;
+  for (let i = 0; i <= N; i++) {
+    const u = i * h;
+    const w = (i === 0 || i === N) ? 1 : (i % 2 === 0) ? 2 : 4;
+    sx += w * Math.cos(u*u / 2);
+    sy += w * Math.sin(u*u / 2);
+  }
+  sx *= h / 3; sy *= h / 3;
+  return [a * sx, a * sy];
+}
+CURVES.clothoid.fn = (t, p) => fresnelPoint(t, p.a);
+
+// ── State ──
+let currentCurve = 'circle';
+let params = {};
+let tFrac = 0; // 0..1 fraction along tRange
+let playing = false;
+let animId = null;
+let speed = 1;
+const N = 600; // number of sample points
+
+// ── DOM refs ──
+const tSlider = document.getElementById('tSlider');
+const tValSpan = document.getElementById('tVal');
+const playBtn = document.getElementById('playBtn');
+const speedSel = document.getElementById('speedSel');
+const presetBar = document.getElementById('presetBar');
+const paramControls = document.getElementById('paramControls');
+
+// ── Build preset buttons ──
+Object.entries(CURVES).forEach(([key, c]) => {
+  const btn = document.createElement('button');
+  btn.textContent = c.name;
+  btn.dataset.key = key;
+  btn.addEventListener('click', () => selectCurve(key));
+  presetBar.appendChild(btn);
+});
+
+function selectCurve(key) {
+  currentCurve = key;
+  const curve = CURVES[key];
+  params = {};
+  Object.entries(curve.params).forEach(([k, v]) => params[k] = v.default);
+  document.querySelectorAll('.presets button').forEach(b => b.classList.toggle('active', b.dataset.key === key));
+  buildParamControls();
+  document.getElementById('formulaText').textContent = curve.formula;
+  update();
+}
+
+function buildParamControls() {
+  const curve = CURVES[currentCurve];
+  paramControls.innerHTML = '';
+  Object.entries(curve.params).forEach(([k, v]) => {
+    const row = document.createElement('div');
+    row.className = 'control-row';
+    row.innerHTML = `<label>${v.label}</label>
+      <input type="range" min="${v.min}" max="${v.max}" step="${v.step}" value="${params[k]}" data-param="${k}">
+      <span class="val">${params[k].toFixed(2)}</span>`;
+    row.querySelector('input').addEventListener('input', e => {
+      params[k] = parseFloat(e.target.value);
+      row.querySelector('.val').textContent = params[k].toFixed(2);
+      update();
+    });
+    paramControls.appendChild(row);
+  });
+}
+
+// ── Derivative helpers ──
+function finiteDx(fn, t, p) {
+  const h = 1e-5;
+  const [x1, y1] = fn(t - h, p);
+  const [x2, y2] = fn(t + h, p);
+  return [(x2 - x1) / (2*h), (y2 - y1) / (2*h)];
+}
+function finiteDdx(fn, t, p) {
+  const h = 1e-5;
+  const [x0, y0] = fn(t - h, p);
+  const [x1, y1] = fn(t, p);
+  const [x2, y2] = fn(t + h, p);
+  return [(x2 - 2*x1 + x0) / (h*h), (y2 - 2*y1 + y0) / (h*h)];
+}
+
+function getDx(curve, t, p) {
+  return curve.dx ? curve.dx(t, p) : finiteDx(curve.fn, t, p);
+}
+function getDdx(curve, t, p) {
+  return curve.ddx ? curve.ddx(t, p) : finiteDdx(curve.fn, t, p);
+}
+
+function curvatureAt(curve, t, p) {
+  const [xp, yp] = getDx(curve, t, p);
+  const [xpp, ypp] = getDdx(curve, t, p);
+  const cross = Math.abs(xp*ypp - yp*xpp);
+  const denom = Math.pow(xp*xp + yp*yp, 1.5);
+  if (denom < 1e-14) return 0;
+  return cross / denom;
+}
+
+function signedCross(curve, t, p) {
+  const [xp, yp] = getDx(curve, t, p);
+  const [xpp, ypp] = getDdx(curve, t, p);
+  return xp*ypp - yp*xpp;
+}
+
+function osculatingCenter(curve, t, p) {
+  const [x, y] = curve.fn(t, p);
+  if (isNaN(x)) return [NaN, NaN];
+  const [xp, yp] = getDx(curve, t, p);
+  const [xpp, ypp] = getDdx(curve, t, p);
+  const cross = xp*ypp - yp*xpp;
+  if (Math.abs(cross) < 1e-14) return [NaN, NaN];
+  const speed2 = xp*xp + yp*yp;
+  const cx = x - yp * speed2 / cross;
+  const cy = y + xp * speed2 / cross;
+  return [cx, cy];
+}
+
+// ── Plotly layout config ──
+const darkLayout = {
+  paper_bgcolor: 'rgba(0,0,0,0)',
+  plot_bgcolor: 'rgba(0,0,0,0)',
+  font: { color: '#8888a0', family: 'Segoe UI, system-ui, sans-serif', size: 11 },
+  margin: { l: 50, r: 20, t: 10, b: 40 },
+  xaxis: { gridcolor: '#1e1e2e', zerolinecolor: '#2a2a3a', color: '#8888a0' },
+  yaxis: { gridcolor: '#1e1e2e', zerolinecolor: '#2a2a3a', color: '#8888a0' },
+};
+
+const plotlyConfig = { responsive: true, displayModeBar: false };
+
+function colorscaleValue(frac) {
+  // blue (low curvature) -> red (high curvature)
+  const r = Math.round(108 + frac * (255 - 108));
+  const g = Math.round(140 - frac * (140 - 60));
+  const b = Math.round(255 - frac * (255 - 80));
+  return `rgb(${r},${g},${b})`;
+}
+
+// ── Main update ──
+let initialized = false;
+
+function update() {
+  const curve = CURVES[currentCurve];
+  const [tMin, tMax] = curve.tRange;
+  const tCurrent = tMin + tFrac * (tMax - tMin);
+
+  // Sample the curve
+  const xs = [], ys = [], ts = [], kappas = [], radii = [];
+  const evolX = [], evolY = [];
+  for (let i = 0; i <= N; i++) {
+    const t = tMin + (tMax - tMin) * i / N;
+    const [x, y] = curve.fn(t, params);
+    ts.push(t);
+    xs.push(x); ys.push(y);
+    const k = curvatureAt(curve, t, params);
+    kappas.push(k);
+    radii.push(k > 1e-10 ? 1/k : NaN);
+    const [cx, cy] = osculatingCenter(curve, t, params);
+    evolX.push(cx); evolY.push(cy);
+  }
+
+  // Current point
+  const [px, py] = curve.fn(tCurrent, params);
+  const k = curvatureAt(curve, tCurrent, params);
+  const R = k > 1e-10 ? 1/k : Infinity;
+  const [cx, cy] = osculatingCenter(curve, tCurrent, params);
+  const [dxv, dyv] = getDx(curve, tCurrent, params);
+
+  // Normal vector (unit)
+  const nLen = Math.sqrt(dxv*dxv + dyv*dyv);
+  const nx = -dyv / nLen, ny = dxv / nLen;
+  const normalScale = Math.min(R, 1.5); // scale normal arrow
+
+  // Tangent angle
+  const tangentAngle = Math.atan2(dyv, dxv) * 180 / Math.PI;
+
+  // Osculating circle points
+  const circX = [], circY = [];
+  if (!isNaN(cx) && isFinite(R) && R < 100) {
+    for (let i = 0; i <= 80; i++) {
+      const a = 2 * Math.PI * i / 80;
+      circX.push(cx + R * Math.cos(a));
+      circY.push(cy + R * Math.sin(a));
+    }
+  }
+
+  // Colour array for curve
+  const maxK = Math.max(...kappas.filter(v => isFinite(v) && !isNaN(v)), 1e-10);
+  const colours = kappas.map(k => {
+    const f = Math.min(k / maxK, 1);
+    return colorscaleValue(f);
+  });
+
+  // ── Main plot ──
+  const mainTraces = [
+    // Evolute
+    { x: evolX, y: evolY, mode: 'lines', line: { color: '#6cffc8', width: 1.5, dash: 'dash' }, name: 'Evolute', hoverinfo: 'skip' },
+    // Curve segments coloured by curvature: use a single line with marker coloring trick
+    // Actually Plotly doesn't support per-segment line colour easily; use markers + line
+    { x: xs, y: ys, mode: 'lines+markers', marker: { color: colours, size: 2 },
+      line: { color: '#6c8cff', width: 2 }, name: 'Curve', hoverinfo: 'skip' },
+    // Osculating circle
+    { x: circX, y: circY, mode: 'lines', line: { color: '#ff6c8c', width: 1.5, dash: 'dot' }, name: 'Osculating circle', hoverinfo: 'skip' },
+    // Center of curvature
+    { x: [cx], y: [cy], mode: 'markers', marker: { color: '#ff6c8c', size: 5, symbol: 'cross' }, name: 'Center', hoverinfo: 'skip', showlegend: false },
+    // Normal vector
+    { x: [px, px + nx * normalScale], y: [py, py + ny * normalScale], mode: 'lines',
+      line: { color: '#ffd36c', width: 2 }, name: 'Normal', hoverinfo: 'skip', showlegend: false },
+    // Current point
+    { x: [px], y: [py], mode: 'markers', marker: { color: '#fff', size: 8, line: { color: '#6c8cff', width: 2 } },
+      name: 'Point', hoverinfo: 'skip', showlegend: false },
+    // Line from point to center
+    { x: [px, cx], y: [py, cy], mode: 'lines', line: { color: '#ff6c8c33', width: 1 }, hoverinfo: 'skip', showlegend: false },
+  ];
+
+  // Compute axis range
+  const validXs = xs.filter(v => isFinite(v) && !isNaN(v));
+  const validYs = ys.filter(v => isFinite(v) && !isNaN(v));
+  const allX = validXs.concat(evolX.filter(v => isFinite(v) && !isNaN(v)));
+  const allY = validYs.concat(evolY.filter(v => isFinite(v) && !isNaN(v)));
+  let xMin = Math.min(...allX), xMax = Math.max(...allX);
+  let yMin = Math.min(...allY), yMax = Math.max(...allY);
+  const pad = Math.max((xMax - xMin), (yMax - yMin)) * 0.15 + 0.5;
+  // Make aspect ratio equal
+  const xMid = (xMin + xMax) / 2, yMid = (yMin + yMax) / 2;
+  const span = Math.max(xMax - xMin, yMax - yMin) / 2 + pad;
+
+  const mainLayout = {
+    ...darkLayout,
+    showlegend: false,
+    xaxis: { ...darkLayout.xaxis, range: [xMid - span, xMid + span], scaleanchor: 'y' },
+    yaxis: { ...darkLayout.yaxis, range: [yMid - span, yMid + span] },
+  };
+
+  // ── Kappa plot ──
+  const kappaTraces = [
+    { x: ts, y: kappas, mode: 'lines', line: { color: '#6c8cff', width: 2 }, hoverinfo: 'skip' },
+    { x: [tCurrent, tCurrent], y: [0, Math.max(...kappas.filter(v => isFinite(v)))], mode: 'lines',
+      line: { color: '#ff6c8c', width: 1.5, dash: 'dash' }, hoverinfo: 'skip' },
+    { x: [tCurrent], y: [k], mode: 'markers', marker: { color: '#fff', size: 6 }, hoverinfo: 'skip' },
+  ];
+  const kappaLayout = {
+    ...darkLayout,
+    showlegend: false,
+    xaxis: { ...darkLayout.xaxis, title: 't' },
+    yaxis: { ...darkLayout.yaxis, title: '\u03ba', rangemode: 'tozero' },
+  };
+
+  // ── Radius plot ──
+  const maxR = Math.min(Math.max(...radii.filter(v => isFinite(v) && !isNaN(v) && v < 1e6), 1), 50);
+  const radiusTraces = [
+    { x: ts, y: radii.map(r => Math.min(r, maxR * 1.1)), mode: 'lines', line: { color: '#6cffc8', width: 2 }, hoverinfo: 'skip' },
+    { x: [tCurrent, tCurrent], y: [0, maxR * 1.1], mode: 'lines',
+      line: { color: '#ff6c8c', width: 1.5, dash: 'dash' }, hoverinfo: 'skip' },
+    { x: [tCurrent], y: [Math.min(R, maxR * 1.1)], mode: 'markers', marker: { color: '#fff', size: 6 }, hoverinfo: 'skip' },
+  ];
+  const radiusLayout = {
+    ...darkLayout,
+    showlegend: false,
+    xaxis: { ...darkLayout.xaxis, title: 't' },
+    yaxis: { ...darkLayout.yaxis, title: 'R', range: [0, maxR * 1.2] },
+  };
+
+  // ── Render ──
+  if (!initialized) {
+    Plotly.newPlot('mainPlot', mainTraces, mainLayout, plotlyConfig);
+    Plotly.newPlot('kappaPlot', kappaTraces, kappaLayout, plotlyConfig);
+    Plotly.newPlot('radiusPlot', radiusTraces, radiusLayout, plotlyConfig);
+    initialized = true;
+  } else {
+    Plotly.react('mainPlot', mainTraces, mainLayout, plotlyConfig);
+    Plotly.react('kappaPlot', kappaTraces, kappaLayout, plotlyConfig);
+    Plotly.react('radiusPlot', radiusTraces, radiusLayout, plotlyConfig);
+  }
+
+  // ── Info panel ──
+  document.getElementById('infoX').textContent = isNaN(px) ? '--' : px.toFixed(4);
+  document.getElementById('infoY').textContent = isNaN(py) ? '--' : py.toFixed(4);
+  document.getElementById('infoK').textContent = isNaN(k) ? '--' : k.toFixed(4);
+  document.getElementById('infoR').textContent = (!isFinite(R) || isNaN(R)) ? '\u221e' : R.toFixed(4);
+  document.getElementById('infoAngle').textContent = isNaN(tangentAngle) ? '--' : tangentAngle.toFixed(1) + '\u00b0';
+  document.getElementById('infoT').textContent = tCurrent.toFixed(3);
+  tValSpan.textContent = tCurrent.toFixed(2);
+}
+
+// ── Slider ──
+tSlider.addEventListener('input', () => {
+  tFrac = parseInt(tSlider.value) / 1000;
+  update();
+});
+
+// ── Animation ──
+playBtn.addEventListener('click', () => {
+  playing = !playing;
+  playBtn.textContent = playing ? 'Pause' : 'Play';
+  if (playing) animate();
+  else cancelAnimationFrame(animId);
+});
+
+speedSel.addEventListener('change', () => {
+  speed = parseFloat(speedSel.value);
+});
+
+let lastTime = 0;
+function animate(ts) {
+  if (!playing) return;
+  if (lastTime) {
+    const dt = (ts - lastTime) / 1000;
+    tFrac += dt * speed * 0.08; // ~12 seconds for full loop at 1x
+    if (tFrac > 1) tFrac -= 1;
+    tSlider.value = Math.round(tFrac * 1000);
+    update();
+  }
+  lastTime = ts;
+  animId = requestAnimationFrame(animate);
+}
+
+// ── Init ──
+selectCurve('ellipse');
+</script>
+</body>
+</html>
